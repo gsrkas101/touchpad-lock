@@ -21,8 +21,8 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("Touchpad Lock")]
 [assembly: System.Reflection.AssemblyProduct("Touchpad Lock")]
-[assembly: System.Reflection.AssemblyVersion("1.0.0.0")]
-[assembly: System.Reflection.AssemblyFileVersion("1.0.0.0")]
+[assembly: System.Reflection.AssemblyVersion("1.1.0.0")]
+[assembly: System.Reflection.AssemblyFileVersion("1.1.0.0")]
 
 namespace TouchpadLock
 {
@@ -171,8 +171,19 @@ namespace TouchpadLock
         // Exists while the app is holding the touchpad off; found at start = the app was cut short.
         static string FlagFile { get { return Path.Combine(Path.GetDirectoryName(Application.ExecutablePath), "locked.flag"); } }
 
+        // Left behind by the first run, so "Start with Windows" is only turned on by itself once.
+        static string FirstRunFile
+        {
+            get
+            {
+                return Path.Combine(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                    "TouchpadLock"), "first-run-done");
+            }
+        }
+
         public TrayApp(string startCommand)
         {
+            bool firstRun = !File.Exists(FirstRunFile);
             ui = SynchronizationContext.Current;
             int iconSize = SystemInformation.SmallIconSize.Width;
             unlockedIcon = Icons.Make(UnlockedColor, false, iconSize);
@@ -211,12 +222,16 @@ namespace TouchpadLock
             poll.Tick += (s, e) => { Refresh(); CheckWayOut(); island.KeepOnTop(); };
             poll.Start();
             StartIpcListener();
-            SetUpAutostart();
+            SetUpAutostart(firstRun);
 
             if (startCommand == "lock" || startCommand == "toggle") SetLocked(true);
             else if (File.Exists(FlagFile)) SetLocked(false);
             else Refresh();
-            if (startCommand == "show") RunCommand("show");
+            if (firstRun)
+                tray.ShowBalloonTip(4000, "Touchpad Lock is ready",
+                    (hasHotKey ? "Press " + HotKeyName + " or click" : "Click") + " the touchpad icon to lock or unlock the touchpad. " +
+                    "It starts with Windows; change that from the icon's menu.", ToolTipIcon.Info);
+            else if (startCommand == "show") RunCommand("show");
         }
 
         void RunCommand(string command)
@@ -361,8 +376,8 @@ namespace TouchpadLock
             listener.Start();
         }
 
-        // Already on: refresh, so the task always points at this exe.
-        void SetUpAutostart()
+        // First run: turn on. Already on: refresh, so the task always points at this exe.
+        void SetUpAutostart(bool firstRun)
         {
             ThreadPool.QueueUserWorkItem(_ =>
             {
@@ -370,7 +385,16 @@ namespace TouchpadLock
                 try
                 {
                     enabled = Autostart.IsEnabled();
-                    if (enabled) Autostart.Enable();
+                    if (firstRun || enabled)
+                    {
+                        Autostart.Enable();
+                        enabled = true;
+                    }
+                    if (firstRun)
+                    {
+                        Directory.CreateDirectory(Path.GetDirectoryName(FirstRunFile));
+                        File.WriteAllText(FirstRunFile, "");
+                    }
                 }
                 catch { }
                 ui.Post(__ => startupEnabled = enabled, null);

@@ -14,13 +14,13 @@ Windows 11 · single 50 KB exe · no install · no admin rights
 - Only the touchpad is blocked. Your mouse keeps working.
 - The pill shows the real Windows touchpad state, so it also appears if you turn the touchpad off in Settings.
 - Works together with Keyboard Lock: the two pills stack, and the touchpad can be unlocked while the keyboard is locked.
-- Optional start at sign-in, using a Task Scheduler task. No admin rights needed.
+- Starts as soon as you sign in to Windows, using a Task Scheduler task. No admin rights needed.
 - Command line options `--toggle`, `--lock`, `--unlock`, `--exit`, for a macro key or any launcher.
 
 ## Download
 Get `TouchpadLock.exe` from [Releases](../../releases) and run it. The touchpad icon appears in the taskbar tray
-(drag it out of the **^** menu if Windows hides it). To start it with Windows, right-click the icon and tick
-**Start with Windows**.
+(drag it out of the **^** menu if Windows hides it). It starts with Windows from then on; to turn that off, right-click
+the icon and untick **Start with Windows**.
 
 The exe isn't code-signed, so Windows SmartScreen may warn you: choose **More info → Run anyway**.
 Or [build it yourself](#build-from-source). It needs .NET Framework 4.x, which is built into Windows.
@@ -52,7 +52,8 @@ This uses the C# compiler that ships with Windows, so no Visual Studio or SDK is
 push the same way and publishes the exe for tagged releases.
 
 ## Uninstalling
-Right-click the icon and untick **Start with Windows**, then choose **Exit** and delete the exe. There are no settings files.
+Right-click the icon and untick **Start with Windows**, then choose **Exit**. Then delete the exe
+and the `%APPDATA%\TouchpadLock` folder.
 
 ## License
 [MIT](LICENSE)
