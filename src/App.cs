@@ -21,8 +21,8 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("Touchpad Lock")]
 [assembly: System.Reflection.AssemblyProduct("Touchpad Lock")]
-[assembly: System.Reflection.AssemblyVersion("1.1.0.0")]
-[assembly: System.Reflection.AssemblyFileVersion("1.1.0.0")]
+[assembly: System.Reflection.AssemblyVersion("1.2.0.0")]
+[assembly: System.Reflection.AssemblyFileVersion("1.2.0.0")]
 
 namespace TouchpadLock
 {
@@ -56,7 +56,6 @@ namespace TouchpadLock
                 Application.SetCompatibleTextRenderingDefault(false);
                 Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
                 SynchronizationContext.SetSynchronizationContext(new WindowsFormsSynchronizationContext());
-                Native.DisablePowerThrottling();
                 Application.Run(new TrayApp(command));
                 mutex.ReleaseMutex();
             }
@@ -152,15 +151,60 @@ namespace TouchpadLock
         }
     }
 
+    // Where the pill was dragged to, kept in %APPDATA%\TouchpadLock\settings.ini.
+    static class PillPosition
+    {
+        static string FilePath
+        {
+            get
+            {
+                return Path.Combine(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                    "TouchpadLock"), "settings.ini");
+            }
+        }
+
+        public static Point? Load()
+        {
+            try
+            {
+                if (!File.Exists(FilePath)) return null;
+                int x = 0, y = 0, found = 0;
+                foreach (string line in File.ReadAllLines(FilePath))
+                {
+                    string[] kv = line.Split('=');
+                    int n;
+                    if (kv.Length != 2 || !int.TryParse(kv[1].Trim(), out n)) continue;
+                    if (kv[0].Trim() == "PillX") { x = n; found |= 1; }
+                    if (kv[0].Trim() == "PillY") { y = n; found |= 2; }
+                }
+                return found == 3 ? new Point(x, y) : (Point?)null;
+            }
+            catch { return null; }
+        }
+
+        public static void Save(Point? p)
+        {
+            try
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(FilePath));
+                File.WriteAllLines(FilePath, p.HasValue
+                    ? new[] { "; Touchpad Lock settings", "PillX=" + p.Value.X, "PillY=" + p.Value.Y }
+                    : new[] { "; Touchpad Lock settings" });
+            }
+            catch { }
+        }
+    }
+
     sealed class TrayApp : ApplicationContext
     {
         public static readonly Color UnlockedColor = Color.FromArgb(34, 160, 80);
         public static readonly Color LockedColor = Color.FromArgb(220, 53, 69);
         const string HotKeyName = "Ctrl+Alt+T";
+        const string KeyboardPillTitle = "Keyboard Lock - keyboard locked";
 
         readonly SynchronizationContext ui;
         readonly NotifyIcon tray;
-        readonly IslandForm island;
+        readonly PillForm island;
         readonly OwnedIcon unlockedIcon, lockedIcon;
         readonly ToolStripMenuItem miToggle, miStartup;
         readonly ManualResetEvent stopIpc = new ManualResetEvent(false);
@@ -189,7 +233,10 @@ namespace TouchpadLock
             unlockedIcon = Icons.Make(UnlockedColor, false, iconSize);
             lockedIcon = Icons.Make(LockedColor, true, iconSize);
 
-            island = new IslandForm();
+            island = new PillForm("Touchpad Lock - touchpad locked", KeyboardPillTitle,
+                Icons.PaintForPill, 22, LockedColor, UnlockedColor);
+            island.Position = PillPosition.Load();
+            island.PositionChanged += (s, e) => PillPosition.Save(island.Position);
             island.UnlockRequested += (s, e) => SetLocked(false);
             island.HotKeyPressed += (s, e) => SetLocked(!locked);
             hasHotKey = Native.RegisterHotKey(island.Handle, 1,
@@ -202,6 +249,7 @@ namespace TouchpadLock
             menu.Items.Add(miToggle);
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add(miStartup);
+            menu.Items.Add(new ToolStripMenuItem("Move the pill back to the top", null, (s, e) => island.ResetPosition()));
             menu.Items.Add(new ToolStripMenuItem("Help", null, (s, e) => ShowHelp()));
             menu.Items.Add(new ToolStripMenuItem("Exit", null, (s, e) => ExitApp()));
             menu.Opening += (s, e) => miStartup.Checked = startupEnabled;
@@ -298,7 +346,13 @@ namespace TouchpadLock
         // Keyboard locked, touchpad locked and no mouse: nothing left to unlock with, so give it back.
         void CheckWayOut()
         {
-            if (locked && IslandForm.KeyboardPillVisible() && !Touchpad.MousePresent()) SetLocked(false);
+            if (locked && KeyboardLocked() && !Touchpad.MousePresent()) SetLocked(false);
+        }
+
+        static bool KeyboardLocked()
+        {
+            IntPtr pill = PillNative.FindWindow(null, KeyboardPillTitle);
+            return pill != IntPtr.Zero && PillNative.IsWindowVisible(pill);
         }
 
         void UpdateUi()
@@ -306,8 +360,8 @@ namespace TouchpadLock
             tray.Icon = (locked ? lockedIcon : unlockedIcon).Icon;
             tray.Text = (locked ? "Touchpad Lock: LOCKED" : "Touchpad Lock: unlocked") + (hasHotKey ? "  (" + HotKeyName + ")" : "");
             miToggle.Text = locked ? "Unlock touchpad" : "Lock touchpad";
-            if (locked) island.ShowLocked("Double-click to unlock" + (hasHotKey ? ", or " + HotKeyName : ""));
-            else island.ShowUnlocked();
+            if (locked) island.ShowLocked("Touchpad locked", "Double-click to unlock" + (hasHotKey ? ", or " + HotKeyName : ""));
+            else island.ShowUnlocked("Touchpad unlocked");
         }
 
         static void WriteFlag()
@@ -422,7 +476,10 @@ namespace TouchpadLock
                 "Touchpad Lock turns the laptop touchpad off, so palms and little hands can't move the mouse.\n\n" +
                 "LOCK OR UNLOCK\n" +
                 "•  Click the touchpad icon in the taskbar tray" + (hasHotKey ? ", or press " + HotKeyName : "") + ".\n" +
-                "•  While locked, double-click the \"Touchpad locked\" pill at the top of the screen with a mouse.\n\n" +
+                "•  While locked, double-click the \"Touchpad locked\" pill with a mouse.\n\n" +
+                "THE PILL\n" +
+                "•  It shrinks to a small icon so it doesn't distract you. Point at it to see the full text.\n" +
+                "•  Drag it anywhere you like; it remembers the place. \"Move the pill back to the top\" in the menu resets it.\n\n" +
                 "GOOD TO KNOW\n" +
                 "•  Only the touchpad is blocked. A mouse keeps working.\n" +
                 "•  Exiting this app turns the touchpad back on.\n" +

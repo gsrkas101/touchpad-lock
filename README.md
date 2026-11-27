@@ -11,6 +11,8 @@ Windows 11 · single 50 KB exe · no install · no admin rights
 - **Tray icon:** click it to lock or unlock. Green means unlocked, red and crossed out means locked.
 - **Ctrl+Alt+T** locks and unlocks too, so you are never stuck without a mouse.
 - A "Touchpad locked" pill springs open at the top of the screen, Dynamic Island style. **Double-click it with a mouse to unlock.** It turns green, then shrinks away.
+- So it doesn't distract you while you work, the pill shrinks to a small icon after a moment. Point at it to see the full text.
+- Drag the pill anywhere on the screen. It remembers the place; **Move the pill back to the top** in the menu resets it.
 - Only the touchpad is blocked. Your mouse keeps working.
 - The pill shows the real Windows touchpad state, so it also appears if you turn the touchpad off in Settings.
 - Works together with Keyboard Lock: the two pills stack, and the touchpad can be unlocked while the keyboard is locked.

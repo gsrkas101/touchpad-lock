@@ -3,7 +3,6 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Drawing;
 using System.Runtime.InteropServices;
 using System.Threading;
 using Microsoft.Win32;
@@ -12,8 +11,6 @@ namespace TouchpadLock
 {
     static class Native
     {
-        public const int WS_EX_TOPMOST = 0x08, WS_EX_TOOLWINDOW = 0x80, WS_EX_LAYERED = 0x80000, WS_EX_NOACTIVATE = 0x08000000;
-        public const int WM_HOTKEY = 0x0312;
         public const uint MOD_ALT = 1, MOD_CONTROL = 2, MOD_NOREPEAT = 0x4000;
         public const uint SPI_GETTOUCHPADPARAMETERS = 0x00AE;
         public const uint KEYEVENTF_EXTENDEDKEY = 1, KEYEVENTF_KEYUP = 2;
@@ -50,90 +47,12 @@ namespace TouchpadLock
         public static extern bool RegisterHotKey(IntPtr hwnd, int id, uint mods, uint vk);
         [DllImport("user32.dll")]
         public static extern bool UnregisterHotKey(IntPtr hwnd, int id);
-        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-        public static extern IntPtr FindWindow(string className, string title);
-        [DllImport("user32.dll")]
-        public static extern bool IsWindowVisible(IntPtr hwnd);
         [DllImport("user32.dll")]
         public static extern IntPtr GetForegroundWindow();
         [DllImport("user32.dll")]
         public static extern bool SetForegroundWindow(IntPtr hwnd);
         [DllImport("user32.dll")]
-        static extern bool SetWindowPos(IntPtr hwnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
-        [DllImport("user32.dll")]
         public static extern bool DestroyIcon(IntPtr hIcon);
-        [DllImport("dwmapi.dll")]
-        public static extern int DwmFlush();
-
-        public static void KeepOnTop(IntPtr hwnd)
-        {
-            SetWindowPos(hwnd, new IntPtr(-1), 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0010);   // no size, move or activate
-        }
-
-        [StructLayout(LayoutKind.Sequential)]
-        struct POWER_THROTTLING { public uint Version, ControlMask, StateMask; }
-        [DllImport("kernel32.dll")]
-        static extern bool SetProcessInformation(IntPtr process, int infoClass, ref POWER_THROTTLING info, int size);
-        [DllImport("kernel32.dll")]
-        static extern IntPtr GetCurrentProcess();
-
-        // Otherwise Windows slows down animation timing of a background app.
-        public static void DisablePowerThrottling()
-        {
-            try
-            {
-                var p = new POWER_THROTTLING { Version = 1, ControlMask = 1 | 4 };
-                SetProcessInformation(GetCurrentProcess(), 4, ref p, Marshal.SizeOf(p));
-            }
-            catch { }
-        }
-
-        [StructLayout(LayoutKind.Sequential)]
-        struct POINT { public int x, y; }
-        [StructLayout(LayoutKind.Sequential)]
-        struct SIZE { public int cx, cy; }
-        [StructLayout(LayoutKind.Sequential, Pack = 1)]
-        struct BLENDFUNCTION { public byte BlendOp, BlendFlags, SourceConstantAlpha, AlphaFormat; }
-
-        [DllImport("user32.dll")]
-        static extern bool UpdateLayeredWindow(IntPtr hwnd, IntPtr hdcDst, ref POINT pptDst, ref SIZE psize,
-            IntPtr hdcSrc, ref POINT pptSrc, int crKey, ref BLENDFUNCTION pblend, int dwFlags);
-        [DllImport("user32.dll")]
-        static extern IntPtr GetDC(IntPtr hwnd);
-        [DllImport("user32.dll")]
-        static extern int ReleaseDC(IntPtr hwnd, IntPtr hdc);
-        [DllImport("gdi32.dll")]
-        static extern IntPtr CreateCompatibleDC(IntPtr hdc);
-        [DllImport("gdi32.dll")]
-        static extern bool DeleteDC(IntPtr hdc);
-        [DllImport("gdi32.dll")]
-        static extern IntPtr SelectObject(IntPtr hdc, IntPtr obj);
-        [DllImport("gdi32.dll")]
-        static extern bool DeleteObject(IntPtr obj);
-
-        // Shows a 32-bit ARGB bitmap as the content of a WS_EX_LAYERED window, with per-pixel alpha.
-        public static void SetLayeredBitmap(IntPtr hwnd, Bitmap bmp, int x, int y, byte opacity)
-        {
-            IntPtr screen = GetDC(IntPtr.Zero);
-            IntPtr memory = CreateCompatibleDC(screen);
-            IntPtr hbitmap = bmp.GetHbitmap(Color.FromArgb(0));
-            IntPtr old = SelectObject(memory, hbitmap);
-            try
-            {
-                var dst = new POINT { x = x, y = y };
-                var src = new POINT();
-                var size = new SIZE { cx = bmp.Width, cy = bmp.Height };
-                var blend = new BLENDFUNCTION { SourceConstantAlpha = opacity, AlphaFormat = 1 };
-                UpdateLayeredWindow(hwnd, screen, ref dst, ref size, memory, ref src, 0, ref blend, 2);
-            }
-            finally
-            {
-                SelectObject(memory, old);
-                DeleteObject(hbitmap);
-                DeleteDC(memory);
-                ReleaseDC(IntPtr.Zero, screen);
-            }
-        }
     }
 
     static class Touchpad
